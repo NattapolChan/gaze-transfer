@@ -14,7 +14,7 @@ from utils import find_abs_angle_difference
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 writer = SummaryWriter('runs/GazeBaseline')
-n_epoch = 100 
+n_epoch = 25 
 debug = False
 model = GazeRepresentationLearning()
 model.to(device)

@@ -1,4 +1,4 @@
-### Implementation of [paper](https://arxiv.org/pdf/1911.06939.pdf) (Unofficial)
+### (Unofficial) Implementation of [paper](https://arxiv.org/pdf/1911.06939.pdf)
 ### Todo:
 - [ ] Test ```grid_sample```
 - [ ] Make ```tools/model.py``` more readable

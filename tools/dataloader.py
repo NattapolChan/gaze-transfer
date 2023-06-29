@@ -9,6 +9,11 @@ import numpy as np
 
 debug = False
 
+preprocess = transforms.Compose([
+    # transforms.ToTensor(),
+    transforms.Normalize((0.5, ), (0.5, )),
+])
+
 class MpiigazeDataset(Dataset):
     # MPIIFaceGaze Dataset (INPUT: PREPROCESSED CROPPED FACE IMAGE)
     def __init__(self, path: str, 
@@ -33,7 +38,10 @@ class MpiigazeDataset(Dataset):
                 print(person_id_str)
                 images = f.get(f'{person_id_str}/image')[()]
                 labels = f.get(f'{person_id_str}/gaze')[()] * 180/ math.pi
-            self.images = torch.concat([self.images, torch.from_numpy(images)], axis=0)
+            images = torch.from_numpy(images).to(torch.float32) 
+            images /= 255.0
+            images = preprocess(images)
+            self.images = torch.concat([self.images, images], axis=0)
             yaw, pitch = labels[:,0] , labels[:,1]
             self.yaw = torch.concat([self.yaw, torch.Tensor(yaw)])
             self.pitch = torch.concat([self.pitch, torch.Tensor(pitch)])
@@ -55,6 +63,7 @@ if __name__ == "__main__":
         if np.random.randint(1000) > 992 and debug:
             index = np.random.randint(32)
             plt.imshow(images[index])
+            plt.colorbar()
             plt.title('test image: \n V: ' + str(yaws[index]) + '\n H: ' + str(pitchs[index]))
             plt.show()
     fig, axes = plt.subplots(5,5, figsize=(20,12))
@@ -62,7 +71,8 @@ if __name__ == "__main__":
     for i in range(25):
         randIdx = np.random.randint(len(dataset.images))
         randIdx = i
-        axes[i//5, i%5].imshow(dataset.images[randIdx])
+        im =axes[i//5, i%5].imshow(dataset.images[randIdx])
         yaw, pitch = dataset.yaw[randIdx], dataset.pitch[randIdx]
+        fig.colorbar(im, ax=axes[i//5, i%5], orientation='vertical')
         axes[i//5, i%5].set_title(f"{round(float(yaw), 3)} {round(float(pitch), 3)}")
     plt.show()

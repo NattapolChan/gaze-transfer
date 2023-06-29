@@ -11,6 +11,10 @@ for param in VGG.parameters():
 VGG_3 = nn.Sequential(*list(VGG.children())[0][:5])
 VGG_8 = nn.Sequential(*list(VGG.children())[0][:13])
 VGG_13 = nn.Sequential(*list(VGG.children())[0][:22])
+print(VGG_3)
+print(VGG_8)
+print(VGG_13)
+print("VGG pretrained imagenet loaded successfully -- == ")
 
 
 def init_weights(m):
@@ -22,6 +26,8 @@ def init_weights(m):
     if isinstance(m, nn.Conv2d):
         print("Found Conv")
         nn.init.xavier_uniform_(m.weight)
+        if m.bias is None:
+            return
         m.bias.data.fill_(0.00)
 
 class ConvBlock(nn.Module):
@@ -116,20 +122,28 @@ class DeConvBlock(nn.Module):
             )
         self.last = last
         self.input_channel = input_channel
+        self.conv = nn.Conv2d(
+            in_channels=self.input_channel, 
+            out_channels=self.input_channel//2, 
+            kernel_size=(1,1)
+        )
+        self.conv_last = nn.Conv2d(
+            in_channels=self.input_channel, 
+            out_channels=self.input_channel//4, 
+            kernel_size=(1,1)
+        )
+        self.bn2 = nn.BatchNorm2d(self.input_channel//2)
+        self.bn4 = nn.BatchNorm2d(self.input_channel//4)
 
     def forward(self, input):
         if not self.last:
-            input_skip = nn.Conv2d(in_channels=self.input_channel, 
-                                   out_channels=self.input_channel//2, 
-                                   kernel_size=(1,1))(input)
+            input_skip = self.conv(input)
             input_skip = nn.LeakyReLU()(input_skip)
-            input_skip = nn.BatchNorm2d(self.input_channel//2)(input_skip)
+            input_skip = self.bn2(input_skip)
         else:
-            input_skip = nn.Conv2d(in_channels=self.input_channel, 
-                                   out_channels=self.input_channel//4, 
-                                   kernel_size=(1,1))(input)
+            input_skip =  self.conv_last(input)
             input_skip = nn.LeakyReLU()(input_skip)
-            input_skip = nn.BatchNorm2d(self.input_channel//4)(input_skip)
+            input_skip = self.bn4(input_skip)
         input = self.features(input)
         input = input_skip + input
         return nn.ReLU()(input)
@@ -138,7 +152,7 @@ class GlobalAlignmentNetwork(nn.Module):
     # global alignment network, input: 2 images, output: 1 image
     def __init__(self, channels=16) -> None:
         super(GlobalAlignmentNetwork, self).__init__()
-        encoder_shared = [
+        self.encoder_shared = nn.Sequential(
             nn.Conv2d(in_channels=1, out_channels=channels, kernel_size=(3,3), padding='same'),
             nn.LeakyReLU(),
             nn.BatchNorm2d(channels),
@@ -146,9 +160,8 @@ class GlobalAlignmentNetwork(nn.Module):
             nn.MaxPool2d(kernel_size=(2,2), stride=(2,2)),
             ConvBlock(input_channel=2*channels),
             nn.MaxPool2d(kernel_size=(2,2), stride=(2,2)),
-        ]
-        self.encoder_shared = nn.Sequential(*encoder_shared)
-        encoder_main = [
+        )
+        self.encoder_main = nn.Sequential(
             nn.Conv2d(in_channels=channels*8, out_channels=channels*8, kernel_size=(3,3), padding='same'),
             nn.LeakyReLU(),
             nn.BatchNorm2d(8*channels),
@@ -160,23 +173,24 @@ class GlobalAlignmentNetwork(nn.Module):
             nn.Flatten(),
             nn.Linear(in_features=16*channels, out_features=3),
             nn.Tanh(),
-        ]
-        self.encoder_main = nn.Sequential(*encoder_main)
+        )
         self.channels = channels
     
     def affine_transformation(self, img, theta, height=36, width=60):
         batch = theta.size()[0]
         theta = torch.flatten(theta, start_dim=1)
-        coef = theta[:,0]
-        iden = torch.eye(2).repeat(batch, 1).view(batch, 2, 2)
+        coef = theta[:,0].to(img.device)
+        iden = torch.eye(2).repeat(batch, 1).view(batch, 2, 2).to(img.device)
         scaling_factor = iden * coef.view(-1,1,1)
         translate = theta[:,1:]
         translate = translate.view(-1,2,1)
         theta = torch.cat([scaling_factor, translate], dim = 2)
-        grid = F.affine_grid(theta, torch.Size((batch, 1, height, width)))
+        grid = F.affine_grid(
+            theta, torch.Size((batch, 1, height, width)), align_corners=True
+        )
         grid = grid.type(torch.float32)
         img = img.type(torch.float32)
-        roi = F.grid_sample(img, grid)
+        roi = F.grid_sample(img, grid, align_corners=True)
         return roi
 
     def forward(self, input_i, input_o):
@@ -185,7 +199,6 @@ class GlobalAlignmentNetwork(nn.Module):
 
         input = torch.cat((input_i_e, input_o_e), dim=1)
         input = self.encoder_main(input)
-        
         input_i_t = self.affine_transformation(input_i, input)
         return input_i_t
 
@@ -215,6 +228,13 @@ class GazeRedirectionNetwork(nn.Module):
             nn.Conv2d(in_channels=channels//4, out_channels=channels//32, kernel_size=(1,1)),
             nn.Tanh(),
         )
+        self.fc1 = nn.Linear(1, 9*15)
+        self.fc2 = nn.Linear(1, 9*15)
+        self.conv_out = nn.Conv2d(
+            in_channels=4*channels+2, out_channels=4*channels, kernel_size=(3,3), padding='same'
+        )
+        self.bn = nn.BatchNorm2d(4*channels)
+
         self.channels = channels
         self.dim = dim
 
@@ -225,17 +245,17 @@ class GazeRedirectionNetwork(nn.Module):
 
         input_yaw = input_yaw.view(batch_size, 1)
         input_pitch = input_pitch.view(batch_size, 1)
-        input_yaw = nn.Linear(in_features=1, out_features=9*15)(input_yaw)
-        input_pitch = nn.Linear(in_features=1, out_features=9*15)(input_pitch)
 
+        input_yaw = self.fc1(input_yaw)
+        input_pitch = self.fc2(input_pitch)
         input_yaw = input_yaw.view(batch_size, 1, self.dim[0]//4, self.dim[1]//4)
         input_pitch = input_pitch.view(batch_size, 1, self.dim[0]//4, self.dim[1]//4)
 
         input_bottleneck = torch.cat((input_image, input_yaw, input_pitch), 1)
 
-        input_deimage = nn.Conv2d(in_channels=4*self.channels+2, out_channels=4*self.channels, kernel_size=(3,3), padding='same')(input_bottleneck)
+        input_deimage = self.conv_out(input_bottleneck)
         input_deimage = nn.LeakyReLU()(input_deimage)
-        input_deimage = nn.BatchNorm2d(4*self.channels)(input_deimage)
+        input_deimage = self.bn(input_deimage) 
         input_deimage = self.decoder(input_deimage)
         return input_deimage
 
@@ -244,14 +264,12 @@ class GazeRepresentationLearning(nn.Module):
     def __init__(self, channels=[64,64,128,128], expand=[False,True,False,True]) -> None:
         super(GazeRepresentationLearning, self).__init__()
 
-        self.features= nn.Sequential(*[
+        self.features= nn.Sequential(
             nn.Conv2d(in_channels=1, out_channels=channels[0], kernel_size=(3,3), padding='same'),
             nn.LeakyReLU(),
             nn.BatchNorm2d(channels[0]),
             # nn.Tanh(),
-        ])
-
-        print(self.features[0].weight.size())
+        )
         
         assert len(channels) == len(expand)
 
@@ -266,12 +284,12 @@ class GazeRepresentationLearning(nn.Module):
                 last= (not expand[layer_index]))
             )
 
-        self.decoder = nn.Sequential(*[
+        self.decoder = nn.Sequential(
             nn.AvgPool2d(kernel_size=(2,3), stride=(2,3)), # 1/3 1/4 for EyeDiap
             nn.Flatten(),
             nn.Linear(in_features=2*channels[-1], out_features=channels[-1]//8),
             nn.Linear(in_features=channels[-1]//8, out_features=2),
-        ])
+        )
         self.features.add_module("decoder", self.decoder)
 
         self.channels = channels[0]
@@ -314,3 +332,30 @@ class UnsupervisedGazeNetwork(nn.Module):
             feature_i.append(each(input_o))
             feature_o.append(each(output))
         return output, feature_i, feature_o
+
+if __name__ == "__main__":
+
+    # test the model
+    model = GazeRepresentationLearning()
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    input = torch.rand(size=(2,1,36,60)).to(device)
+    model.to(device)
+    outputs = model(input)
+    assert outputs.size() == (2,2)
+    print("GazeRepresentationLearning passed")
+    print(model)
+
+    model = GazeRedirectionNetwork()
+    model.to(device)
+    yaw, pitch = torch.rand(size=(2,1)).to(device), torch.rand(size=(2,1)).to(device)
+    outputs = model(input, yaw, pitch)
+    assert outputs.size() == (2,2,36,60)
+    print("GazeRedirectionNetwork passed")
+    print(model)
+
+    model = GlobalAlignmentNetwork()
+    model.to(device)
+    output = model(input, input)
+    assert output.size() == input.size()
+    print("GlobalAlignmentNetwork passed")
+    print(model)

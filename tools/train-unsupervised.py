@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 writer = SummaryWriter('runs/GazeUnsupervised-run-2')
 
-n_epoch = 150 
+n_epoch = 250 
 debug = False
 model_gaze = GazeRepresentationLearning()
 model_align = GlobalAlignmentNetwork()
@@ -35,7 +35,7 @@ model_align.to(device)
 criterion = Loss() 
 params = list(model_redirect.parameters()) + list(model_align.parameters()) 
 optimizer = torch.optim.Adam(
-    params, lr=1e-7
+    params, lr=1e-6
 )
 
 model_gaze.load_state_dict(torch.load("pretrained/baseline_25_[25-06-23_20-02]_13.11.pth", map_location=device))
@@ -56,8 +56,8 @@ def show_images(images: List[torch.Tensor] | torch.Tensor) -> None:
 
 
 if __name__ == "__main__":
-    train_dataset = MpiigazeDataset(path="datasets/MPIIGaze.h5", person_id=range(1,9))
-    val_dataset = MpiigazeDataset(path="datasets/MPIIGaze.h5", person_id=range(9,12))
+    train_dataset = MpiigazeDataset(path="datasets/MPIIGaze.h5", person_id=tuple(range(1,9)))
+    val_dataset = MpiigazeDataset(path="datasets/MPIIGaze.h5", person_id=tuple(range(9,12)))
 
     train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=2)
 
@@ -94,7 +94,7 @@ if __name__ == "__main__":
             optimizer.zero_grad()
             images_aligned = model_align(images, images_ref)
 
-            loss = 0.3 * criterion(images_aligned, images, [], [])
+            loss = 0.5 * criterion(images_aligned, images, [], [])
 
             angle_src = model_gaze(images)
             angle_tgt = model_gaze(images_ref)
@@ -102,7 +102,7 @@ if __name__ == "__main__":
             angle_yaw = angle_src[:,0] - angle_tgt[:,0]
             angle_pitch = angle_src[:,1] - angle_tgt[:,1]
 
-            grid_out = model_redirect(images, angle_yaw, angle_pitch)
+            grid_out = model_redirect(images_aligned, angle_yaw, angle_pitch)
             grid_out = torch.permute(grid_out, (0,2,3,1))
             output = F.grid_sample(images, grid_out)
 

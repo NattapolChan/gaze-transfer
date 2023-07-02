@@ -22,9 +22,9 @@ from typing import List
 import matplotlib.pyplot as plt
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-writer = SummaryWriter('runs/GazeUnsupervised-run-2')
+writer = SummaryWriter('runs/GazeUnsupervised-run-4')
 
-n_epoch = 250 
+n_epoch = 150 
 debug = False
 model_gaze = GazeRepresentationLearning()
 model_align = GlobalAlignmentNetwork()
@@ -35,7 +35,7 @@ model_align.to(device)
 criterion = Loss() 
 params = list(model_redirect.parameters()) + list(model_align.parameters()) 
 optimizer = torch.optim.Adam(
-    params, lr=1e-6
+    params, lr=2e-5
 )
 
 model_gaze.load_state_dict(torch.load("pretrained/baseline_25_[25-06-23_20-02]_13.11.pth", map_location=device))
@@ -55,99 +55,97 @@ def show_images(images: List[torch.Tensor] | torch.Tensor) -> None:
     plt.show(block=True)
 
 
-if __name__ == "__main__":
-    train_dataset = MpiigazeDataset(path="datasets/MPIIGaze.h5", person_id=tuple(range(1,9)))
-    val_dataset = MpiigazeDataset(path="datasets/MPIIGaze.h5", person_id=tuple(range(9,12)))
+train_dataset = MpiigazeDataset(path="datasets/MPIIGaze.h5", person_id=tuple(range(1,9)))
+val_dataset = MpiigazeDataset(path="datasets/MPIIGaze.h5", person_id=tuple(range(9,12)))
 
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=2)
+train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=2)
 
-    
-    array_log = []
-    running_loss = 0.0
-    running_angle_error = 0.0
-    i=0
+array_log = []
+running_loss = 0.0
+running_angle_error = 0.0
+i=0
 
-    for epoch in range(n_epoch):
-        for iter, data in enumerate((pbar:=tqdm(train_loader))):
+for epoch in range(n_epoch):
+    for iter, data in enumerate((pbar:=tqdm(train_loader))):
 
-            images, _, _ = data
-            i+=1
+        images, _, _ = data
+        i+=1
+        
+        # random paring by rotaing src image tensor by 1
+        images = images.view(images.size(0), 1, images.size(1), images.size(2)).to(device)
+        images_ref = torch.cat(
+            [images[1:], images[0].view(1,1,images.size(2), images.size(3))]
+        ).view(images.size(0), 1, images.size(2), images.size(3)).to(device)
+
+        if epoch == 0 and iter == 30 and debug:
             
-            # random paring by rotaing src image tensor by 1
-            images = images.view(images.size(0), 1, images.size(1), images.size(2)).to(device)
-            images_ref = torch.cat(
-                [images[1:], images[0].view(1,1,images.size(2), images.size(3))]
-            ).view(images.size(0), 1, images.size(2), images.size(3)).to(device)
-
-            if epoch == 0 and iter == 30 and debug:
-                
-                grid_images = torchvision.utils.make_grid(images.cpu(), nrow = 4)
-                writer.add_image("images_test", grid_images)
-                show_images(images.cpu())
-                
-
+            grid_images = torchvision.utils.make_grid(images.cpu(), nrow = 4)
+            writer.add_image("images_test", grid_images)
+            show_images(images.cpu())
             
-            model_gaze.train(True)
-            model_align.train(True)
-            model_redirect.train(True)
 
-            optimizer.zero_grad()
-            images_aligned = model_align(images, images_ref)
+        
+        model_gaze.train(True)
+        model_align.train(True)
+        model_redirect.train(True)
 
-            loss = 0.5 * criterion(images_aligned, images, [], [])
+        optimizer.zero_grad()
+        images_aligned = model_align(images, images_ref)
 
-            angle_src = model_gaze(images)
-            angle_tgt = model_gaze(images_ref)
+        loss = 0.1 * criterion(images_aligned, images, [], [])
 
-            angle_yaw = angle_src[:,0] - angle_tgt[:,0]
-            angle_pitch = angle_src[:,1] - angle_tgt[:,1]
+        angle_src = model_gaze(images)
+        angle_tgt = model_gaze(images_ref)
 
-            grid_out = model_redirect(images_aligned, angle_yaw, angle_pitch)
-            grid_out = torch.permute(grid_out, (0,2,3,1))
-            output = F.grid_sample(images, grid_out)
+        angle_yaw = angle_src[:,0] - angle_tgt[:,0]
+        angle_pitch = angle_src[:,1] - angle_tgt[:,1]
 
-            feature_src, feature_tgt = [], []
-            for each in VGG:
-                images_rgb = torch.cat([images_ref, images_ref, images_ref], 1)
-                outputs_rgb = torch.cat([output, output, output], 1)
-                assert images_rgb.size(1) == 3
-                feature_src.append(each(images_rgb))
-                feature_tgt.append(each(outputs_rgb))
-            loss += criterion(images, output, feature_src, feature_tgt)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item()
+        grid_out = model_redirect(images_aligned, angle_yaw, angle_pitch)
+        grid_out = torch.permute(grid_out, (0,2,3,1))
+        output = F.grid_sample(images, grid_out)
 
-            if i % 10000 == 9999:
+        feature_src, feature_tgt = [], []
+        for each in VGG:
+            images_rgb = torch.cat([images_ref, images_ref, images_ref], 1)
+            outputs_rgb = torch.cat([output, output, output], 1)
+            assert images_rgb.size(1) == 3
+            feature_src.append(each(images_rgb))
+            feature_tgt.append(each(outputs_rgb))
+        loss += criterion(images, output, feature_src, feature_tgt)
+        loss.backward()
+        optimizer.step()
+        running_loss += loss.item()
 
-                writer.add_scalar('training_loss', running_loss / 10000, epoch * len(train_loader) + i)
+        if i % 10000 == 9999:
 
-                grid_images = torchvision.utils.make_grid(images, nrow=4)
-                grid_ref = torchvision.utils.make_grid(images_ref, nrow=4)
-                grid_aligned = torchvision.utils.make_grid(images_aligned, nrow=4)
-                grid_output = torchvision.utils.make_grid(output, nrow=4)
-                grid_grid = torchvision.utils.make_grid(grid_out[0, :, :, 0])
-                writer.add_image("images_src", grid_images)
-                writer.add_image("images_ref", grid_ref)
-                writer.add_image("images_aligned", grid_aligned)
-                writer.add_image("images_tgt", grid_output)
-                writer.add_image("grid", grid_grid)
+            writer.add_scalar('training_loss', running_loss / 10000, epoch * len(train_loader) + i)
 
-                array_log.append(running_loss/10000)
+            grid_images = torchvision.utils.make_grid(images, nrow=4)
+            grid_ref = torchvision.utils.make_grid(images_ref, nrow=4)
+            grid_aligned = torchvision.utils.make_grid(images_aligned, nrow=4)
+            grid_output = torchvision.utils.make_grid(output, nrow=4)
+            grid_grid = torchvision.utils.make_grid(grid_out[0, :, :, 0])
+            writer.add_image("images_src", grid_images)
+            writer.add_image("images_ref", grid_ref)
+            writer.add_image("images_aligned", grid_aligned)
+            writer.add_image("images_tgt", grid_output)
+            writer.add_image("grid", grid_grid)
 
-                pbar.set_description(
-                    f"EPOCH : {epoch} loss={round(array_log[-1],3)} s_loss={round(float(criterion.loss__style * criterion.coef_spatial),3)} p_loss={round(float(criterion.loss__pixel * criterion.coef_pixel),3)} f_loss={round(float(criterion.loss__feature) * criterion.coef_perceptual, 3)}"
-                )
-                running_loss = 0.0
-                running_angle_error = 0.0
-    print(array_log)
-    now = datetime.now()
-    time_string = now.strftime("%d-%m-%y_%H-%M")
-    torch.save(model_redirect.state_dict(), f'pretrained/model-redirect-[{time_string}].pth')
-    torch.save(model_align.state_dict(), f'pretrained/model-align-[{time_string}].pth')
+            array_log.append(running_loss/10000)
 
-    # torch.save(
-    #     model.state_dict(), 
-    #     f"pretrained/baseline_{n_epoch}_[{time_string}]_{str(round(float(array_log[-1]), 3))}.pth"
-    # )
+            pbar.set_description(
+                f"EPOCH : {epoch} loss={round(array_log[-1],3)} s_loss={round(float(criterion.loss__style * criterion.coef_spatial),3)} p_loss={round(float(criterion.loss__pixel * criterion.coef_pixel),3)} f_loss={round(float(criterion.loss__feature) * criterion.coef_perceptual, 3)}"
+            )
+            running_loss = 0.0
+            running_angle_error = 0.0
+print(array_log)
+now = datetime.now()
+time_string = now.strftime("%d-%m-%y_%H-%M")
+torch.save(model_redirect.state_dict(), f'pretrained/model-redirect-[{time_string}].pth')
+torch.save(model_align.state_dict(), f'pretrained/model-align-[{time_string}].pth')
+
+# torch.save(
+#     model.state_dict(), 
+#     f"pretrained/baseline_{n_epoch}_[{time_string}]_{str(round(float(array_log[-1]), 3))}.pth"
+# )
 

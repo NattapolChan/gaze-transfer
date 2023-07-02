@@ -181,7 +181,7 @@ class GlobalAlignmentNetwork(nn.Module):
         theta = torch.flatten(theta, start_dim=1)
         coef = theta[:,0].to(img.device)
         iden = torch.eye(2).repeat(batch, 1).view(batch, 2, 2).to(img.device)
-        scaling_factor = iden * coef.view(-1,1,1)
+        scaling_factor = iden * ( (coef.view(-1,1,1) + 1.0)/2 + 0.6) 
         translate = theta[:,1:]
         translate = translate.view(-1,2,1)
         theta = torch.cat([scaling_factor, translate], dim = 2)

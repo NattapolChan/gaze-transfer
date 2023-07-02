@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class Loss(nn.Module):
-    def __init__(self, height=36, width=60, coef_pixel=0.5, coef_perceptual=0.3, coef_spatial=0.1, coef_warp_reg=0.25) -> None: 
+    def __init__(self, height=36, width=60, coef_pixel=0.5, coef_perceptual=0.5, coef_spatial=0.2, coef_warp_reg=0.25) -> None: 
         super(Loss, self).__init__()
         self.height= height
         self.width = width

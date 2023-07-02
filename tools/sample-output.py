@@ -15,9 +15,9 @@ model_align = GlobalAlignmentNetwork()
 model_gaze = GazeRepresentationLearning()
 model_redirect = GazeRedirectionNetwork()
 
-model_align.load_state_dict(torch.load('pretrained/model-align-[29-06-23_19-40].pth', map_location='cpu'))
+model_align.load_state_dict(torch.load('pretrained/model-align-[30-06-23_16-05].pth', map_location='cpu'))
 model_gaze.load_state_dict(torch.load('pretrained/baseline_25_[25-06-23_20-02]_13.11.pth', map_location='cpu'))
-model_redirect.load_state_dict(torch.load('pretrained/model-redirect-[29-06-23_19-40].pth', map_location='cpu'))
+model_redirect.load_state_dict(torch.load('pretrained/model-redirect-[30-06-23_16-05].pth', map_location='cpu'))
 model_align.eval()
 model_gaze.eval()
 model_redirect.eval()
@@ -74,7 +74,7 @@ def forward_model(image_src: torch.Tensor, image_ref: torch.Tensor) -> torch.Ten
     angle_yaw = angle_src[:,0] - angle_tgt[:,0]
     angle_pitch = angle_src[:,1] - angle_tgt[:,1]
 
-    grid_out = model_redirect(image_src, angle_yaw, angle_pitch)
+    grid_out = model_redirect(image_aligned, angle_yaw, angle_pitch)
     grid_out = torch.permute(grid_out, (0,2,3,1))
 
     return F.grid_sample(image_src, grid_out)

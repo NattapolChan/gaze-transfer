@@ -22,9 +22,9 @@ from typing import List
 import matplotlib.pyplot as plt
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-writer = SummaryWriter('runs/GazeUnsupervised-run-5')
+writer = SummaryWriter('runs/GazeUnsupervised-run-7')
 
-n_epoch = 300 
+n_epoch = 200 
 debug = False
 model_gaze = GazeRepresentationLearning()
 model_align = GlobalAlignmentNetwork()
@@ -35,7 +35,7 @@ model_align.to(device)
 criterion = Loss() 
 params = list(model_redirect.parameters()) + list(model_align.parameters()) 
 optimizer = torch.optim.Adam(
-    params, lr=1e-5
+    params, lr=3e-6
 )
 
 model_gaze.load_state_dict(torch.load("pretrained/baseline_25_[25-06-23_20-02]_13.11.pth", map_location=device))
@@ -85,14 +85,18 @@ for epoch in range(n_epoch):
             
 
         
-        model_gaze.train(True)
+        if epoch > 200:
+            model_gaze.train(True)
+            for param in model_gaze.parameters():
+                param.requires_grad = True
+
         model_align.train(True)
         model_redirect.train(True)
 
         optimizer.zero_grad()
         images_aligned = model_align(images, images_ref)
 
-        loss = 0.1 * criterion(images_aligned, images, [], [])
+        loss = 0.04 * criterion(images_aligned, images, [], [])
 
         angle_src = model_gaze(images)
         angle_tgt = model_gaze(images_ref)
@@ -111,7 +115,7 @@ for epoch in range(n_epoch):
             assert images_rgb.size(1) == 3
             feature_src.append(each(images_rgb))
             feature_tgt.append(each(outputs_rgb))
-        loss += criterion(images, output, feature_src, feature_tgt)
+        loss += criterion(images_ref, output, feature_src, feature_tgt)
         loss.backward()
         optimizer.step()
         running_loss += loss.item()

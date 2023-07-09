@@ -22,9 +22,9 @@ from typing import List
 import matplotlib.pyplot as plt
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-writer = SummaryWriter('runs/GazeUnsupervised-run-7')
+writer = SummaryWriter('runs/GazeUnsupervised-run-8')
 
-n_epoch = 200 
+n_epoch = 275 
 debug = False
 model_gaze = GazeRepresentationLearning()
 model_align = GlobalAlignmentNetwork()
@@ -35,7 +35,7 @@ model_align.to(device)
 criterion = Loss() 
 params = list(model_redirect.parameters()) + list(model_align.parameters()) 
 optimizer = torch.optim.Adam(
-    params, lr=3e-6
+    params, lr=2e-6
 )
 
 model_gaze.load_state_dict(torch.load("pretrained/baseline_25_[25-06-23_20-02]_13.11.pth", map_location=device))
@@ -82,10 +82,9 @@ for epoch in range(n_epoch):
             grid_images = torchvision.utils.make_grid(images.cpu(), nrow = 4)
             writer.add_image("images_test", grid_images)
             show_images(images.cpu())
-            
 
         
-        if epoch > 200:
+        if epoch == 75:
             model_gaze.train(True)
             for param in model_gaze.parameters():
                 param.requires_grad = True
@@ -96,7 +95,7 @@ for epoch in range(n_epoch):
         optimizer.zero_grad()
         images_aligned = model_align(images, images_ref)
 
-        loss = 0.04 * criterion(images_aligned, images, [], [])
+        loss = 0.01 * criterion(images_aligned, images, [], [])
 
         angle_src = model_gaze(images)
         angle_tgt = model_gaze(images_ref)
@@ -147,6 +146,7 @@ now = datetime.now()
 time_string = now.strftime("%d-%m-%y_%H-%M")
 torch.save(model_redirect.state_dict(), f'pretrained/model-redirect-[{time_string}].pth')
 torch.save(model_align.state_dict(), f'pretrained/model-align-[{time_string}].pth')
+torch.save(model_gaze.state_dict(), f'pretrained/model-gaze-[{time_string}].pth')
 
 # torch.save(
 #     model.state_dict(), 

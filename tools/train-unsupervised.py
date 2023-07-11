@@ -22,9 +22,9 @@ from typing import List
 import matplotlib.pyplot as plt
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-writer = SummaryWriter('runs/GazeUnsupervised-run-8')
+writer = SummaryWriter('runs/GazeUnsupervised-run-10')
 
-n_epoch = 275 
+n_epoch = 350 
 debug = False
 model_gaze = GazeRepresentationLearning()
 model_align = GlobalAlignmentNetwork()
@@ -58,7 +58,7 @@ def show_images(images: List[torch.Tensor] | torch.Tensor) -> None:
 train_dataset = MpiigazeDataset(path="datasets/MPIIGaze.h5", person_id=tuple(range(1,9)))
 val_dataset = MpiigazeDataset(path="datasets/MPIIGaze.h5", person_id=tuple(range(9,12)))
 
-train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=2)
+train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=16)
 
 array_log = []
 running_loss = 0.0
@@ -98,7 +98,9 @@ for epoch in range(n_epoch):
         loss = 0.01 * criterion(images_aligned, images, [], [])
 
         angle_src = model_gaze(images)
-        angle_tgt = model_gaze(images_ref)
+        angle_tgt = torch.cat(
+                [angle_src[1:], angle_src[0].unsqueeze(0)]
+        )
 
         angle_yaw = angle_src[:,0] - angle_tgt[:,0]
         angle_pitch = angle_src[:,1] - angle_tgt[:,1]
@@ -148,6 +150,7 @@ torch.save(model_redirect.state_dict(), f'pretrained/model-redirect-[{time_strin
 torch.save(model_align.state_dict(), f'pretrained/model-align-[{time_string}].pth')
 torch.save(model_gaze.state_dict(), f'pretrained/model-gaze-[{time_string}].pth')
 
+print(time_string)
 # torch.save(
 #     model.state_dict(), 
 #     f"pretrained/baseline_{n_epoch}_[{time_string}]_{str(round(float(array_log[-1]), 3))}.pth"

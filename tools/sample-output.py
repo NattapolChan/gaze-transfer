@@ -15,9 +15,11 @@ model_align = GlobalAlignmentNetwork()
 model_gaze = GazeRepresentationLearning()
 model_redirect = GazeRedirectionNetwork()
 
-model_align.load_state_dict(torch.load('pretrained/model-align-[10-07-23_01-03].pth', map_location='cpu'))
-model_gaze.load_state_dict(torch.load('pretrained/model-gaze-[10-07-23_01-03].pth', map_location='cpu'))
-model_redirect.load_state_dict(torch.load('pretrained/model-redirect-[10-07-23_01-03].pth', map_location='cpu'))
+date = '[11-07-23_21-25]'
+
+model_align.load_state_dict(torch.load(f'pretrained/model-align-{date}.pth', map_location='cpu'))
+model_gaze.load_state_dict(torch.load(f'pretrained/model-gaze-{date}.pth', map_location='cpu'))
+model_redirect.load_state_dict(torch.load(f'pretrained/model-redirect-{date}.pth', map_location='cpu'))
 model_align.eval()
 model_gaze.eval()
 model_redirect.eval()

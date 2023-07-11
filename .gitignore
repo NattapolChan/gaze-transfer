@@ -3,7 +3,7 @@ runs/*
 pretrained/*
 tools/sample-output.py
 tools/affine-transformation-test.py
-
+*.jpg
 <<<<<<< HEAD
 
 =======

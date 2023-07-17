@@ -15,7 +15,7 @@ model_align = GlobalAlignmentNetwork()
 model_gaze = GazeRepresentationLearning()
 model_redirect = GazeRedirectionNetwork()
 
-date = '[11-07-23_21-25]'
+date = '[17-07-23_21-54]'
 
 model_align.load_state_dict(torch.load(f'pretrained/model-align-{date}.pth', map_location='cpu'))
 model_gaze.load_state_dict(torch.load(f'pretrained/model-gaze-{date}.pth', map_location='cpu'))
@@ -39,9 +39,14 @@ def main():
         image_src = torch.unsqueeze(image_src, 0)
         image_ref = torch.unsqueeze(image_ref, 0) 
         image_tgt = forward_model(image_src, image_ref)
+        angle_tgt = model_gaze(image_tgt)
+        print(angle_tgt.size())
 
-        label = f'{iter} : ({to_readable(yaw_src)}, {to_readable(pitch_src)}) to ({to_readable(yaw_ref)}, {to_readable(pitch_ref)})'
-        labels.extend([label + ' src', label + ' ref', label + 'tgt'])
+        labels.extend([
+            f'({to_readable(yaw_src)},{to_readable(pitch_src)})', 
+            f'({to_readable(yaw_ref)},{to_readable(pitch_ref)})', 
+            f'({to_readable(angle_tgt[0][0])},{to_readable(angle_tgt[0][1])})'
+        ])
         image_toshow_list.extend([image_src, image_ref, image_tgt])
 
     show_images(image_toshow_list, labels)

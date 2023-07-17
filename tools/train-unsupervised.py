@@ -22,9 +22,9 @@ from typing import List
 import matplotlib.pyplot as plt
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-writer = SummaryWriter('runs/GazeUnsupervised-run-10')
+writer = SummaryWriter('runs/GazeUnsupervised-run-12')
 
-n_epoch = 350 
+n_epoch = 350
 debug = False
 model_gaze = GazeRepresentationLearning()
 model_align = GlobalAlignmentNetwork()
@@ -35,7 +35,7 @@ model_align.to(device)
 criterion = Loss() 
 params = list(model_redirect.parameters()) + list(model_align.parameters()) 
 optimizer = torch.optim.Adam(
-    params, lr=2e-6
+    params, lr=2e-5
 )
 
 model_gaze.load_state_dict(torch.load("pretrained/baseline_25_[25-06-23_20-02]_13.11.pth", map_location=device))

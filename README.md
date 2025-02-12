@@ -1,4 +1,6 @@
-Implementation of [paper](https://arxiv.org/pdf/1911.06939.pdf)
+A trial at implementing the paper [paper](https://arxiv.org/pdf/1911.06939.pdf)
+**not an official implementation**
+
 ### Todo:
 - [X] Test ```grid_sample```
 - [ ] Increase Batch size -> increase training time (need recheck)
